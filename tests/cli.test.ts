@@ -100,6 +100,56 @@ describe('the CLI against a fixture server on a temp HOME', () => {
     assert.match(result.out, /Nothing was written\./);
   });
 
+  describe('--yes in a terminal asks nothing', () => {
+    it('installs both parts for --client with no --what, and asks no question', async () => {
+      const result = await runCli({ env, argv: ['--client', 'codex', '--yes', ...api()], interactive: true });
+      assert.equal(result.code, 0, result.err);
+      assert.deepEqual(result.asked, []);
+      assert.match(readText(path.join(env.home, '.codex', 'config.toml')), /\[mcp_servers\.agentbuffs\]/);
+      assert.equal(readText(path.join(env.home, '.codex', 'skills', 'find-agent-tools', 'SKILL.md')), SKILL_TEXT);
+    });
+
+    it('still honours --what', async () => {
+      const result = await runCli({ env, argv: ['--client', 'codex', '--what', 'mcp', '--yes', ...api()], interactive: true });
+      assert.equal(result.code, 0, result.err);
+      assert.deepEqual(result.asked, []);
+      assert.equal(existsSync(path.join(env.home, '.codex', 'skills')), false);
+    });
+
+    it('takes the agents it finds when there is no --client, without asking which', async () => {
+      mkdirSync(path.join(env.home, '.cursor'));
+      mkdirSync(path.join(env.home, '.codex'));
+      const result = await runCli({ env, argv: ['--yes', ...api()], interactive: true });
+      assert.equal(result.code, 0, result.err);
+      assert.deepEqual(result.asked, []);
+      assert.match(readText(path.join(env.home, '.cursor', 'mcp.json')), /agentbuffs/);
+      assert.match(readText(path.join(env.home, '.codex', 'config.toml')), /agentbuffs/);
+    });
+
+    it('exits 2 with the known slugs when there is no --client and no agent is found, and writes nothing', async () => {
+      const before = snapshotTree(env.root);
+      const result = await runCli({ env, argv: ['--yes', ...api()], interactive: true });
+      assert.equal(result.code, 2);
+      assert.deepEqual(result.asked, []);
+      assert.match(result.err, /No agent found\. Pick one with --client: claude-code, cursor/);
+      assert.deepEqual(snapshotTree(env.root), before);
+    });
+
+    it('replaces a different existing entry without asking', async () => {
+      writeFile(path.join(env.home, '.cursor', 'mcp.json'), JSON.stringify({ mcpServers: { agentbuffs: { url: 'https://old.example' } } }));
+      const result = await runCli({ env, argv: ['--client', 'cursor', '--yes', ...api()], interactive: true });
+      assert.equal(result.code, 0, result.err);
+      assert.deepEqual(result.asked, []);
+      assert.match(readText(path.join(env.home, '.cursor', 'mcp.json')), /agentbuffs\.com\/api\/mcp/);
+    });
+
+    it('without --yes the parts question is still asked', async () => {
+      const result = await runCli({ env, argv: ['--client', 'codex', ...api()], interactive: true, answers: { what: 'mcp', plan: ['install'] } });
+      assert.equal(result.code, 0, result.err);
+      assert.deepEqual(result.asked, ['what', 'plan details=true']);
+    });
+  });
+
   it('shows the changes on request, asks again without that choice, and writes nothing on cancel', async () => {
     mkdirSync(path.join(env.home, '.cursor'));
     const before = snapshotTree(env.root);

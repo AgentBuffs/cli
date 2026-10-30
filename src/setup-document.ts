@@ -12,6 +12,13 @@
  *  - `manual`: `steps` (plain text lines) and `docsUrl` (or null).
  *  - Any file action may carry `paths: { darwin?, win32?, linux? }`, which
  *    replaces `path` on that platform. `json-merge` may carry `jsonc: true`.
+ *  - Any file action may carry `xdgConfigPath`, a path below the XDG config
+ *    folder (`opencode/opencode.json`). It replaces `path` and `paths` while
+ *    `XDG_CONFIG_HOME` is set to an absolute path, and means nothing otherwise.
+ *    `detect.xdgConfigPaths` is the same idea for detection.
+ *
+ * Unknown fields are ignored, on purpose: that is how the server adds an
+ * optional field (like `xdgConfigPath`) without breaking a published CLI.
  *
  * An action with any other `kind` is kept as `unsupported` and shown as manual.
  */
@@ -24,7 +31,7 @@ export type JsonObject = { [key: string]: JsonValue };
 export type Platform = 'darwin' | 'win32' | 'linux';
 export type PlatformPaths = Partial<Record<Platform, string>>;
 
-type FileTarget = { path: string; paths: PlatformPaths };
+export type FileTarget = { path: string; paths: PlatformPaths; xdgConfigPath: string | null };
 
 export type RunAction = { kind: 'run'; command: string; args: string[] };
 export type JsonMergeAction = FileTarget & { kind: 'json-merge'; keyPath: string[]; value: JsonValue; jsonc: boolean | null };
@@ -46,7 +53,7 @@ export type Action =
 export type Harness = {
   slug: string;
   name: string;
-  detect: { commands: string[]; paths: string[] };
+  detect: { commands: string[]; paths: string[]; xdgConfigPaths: string[] };
   mcp: Action | null;
   skill: Action | null;
 };
@@ -149,8 +156,31 @@ function readPlatformPaths(input: unknown, where: string): PlatformPaths {
   return result;
 }
 
+/** A path below the XDG config folder: relative, forward slashes, no `..`, no variables. */
+function readXdgConfigPathText(input: unknown, where: string): string {
+  const text = readString(input, where);
+  const isPlain = !text.startsWith('/') && !/[\\:$%]/.test(text) && text.split('/').every((part) => part !== '' && part !== '.' && part !== '..');
+  if (!isPlain) fail(where, 'must be a relative path with forward slashes and no ".." or variables');
+  return text;
+}
+
+function readXdgConfigPath(input: unknown, where: string): string | null {
+  if (input === undefined || input === null) return null;
+  return readXdgConfigPathText(input, where);
+}
+
+function readXdgConfigPaths(input: unknown, where: string): string[] {
+  if (input === undefined) return [];
+  if (!Array.isArray(input)) fail(where, 'must be an array of strings');
+  return input.map((item, index) => readXdgConfigPathText(item, `${where}[${index}]`));
+}
+
 function readFileTarget(raw: Raw, where: string): FileTarget {
-  return { path: readString(raw.path, `${where}.path`), paths: readPlatformPaths(raw.paths, `${where}.paths`) };
+  return {
+    path: readString(raw.path, `${where}.path`),
+    paths: readPlatformPaths(raw.paths, `${where}.paths`),
+    xdgConfigPath: readXdgConfigPath(raw.xdgConfigPath, `${where}.xdgConfigPath`),
+  };
 }
 
 // =============================================================================
@@ -202,6 +232,7 @@ function readHarness(input: unknown, where: string): Harness {
     detect: {
       commands: readOptionalStringArray(detect.commands, `${where}.detect.commands`),
       paths: readOptionalStringArray(detect.paths, `${where}.detect.paths`),
+      xdgConfigPaths: readXdgConfigPaths(detect.xdgConfigPaths, `${where}.detect.xdgConfigPaths`),
     },
     mcp: readAction(raw.mcp, `${where}.mcp`),
     skill: readAction(raw.skill, `${where}.skill`),

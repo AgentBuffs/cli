@@ -3,7 +3,7 @@
  */
 import { accessSync, constants, existsSync, statSync } from 'node:fs';
 import path from 'node:path';
-import { expandPath, type RunContext } from './paths.ts';
+import { expandPath, expandXdgConfigPath, type RunContext } from './paths.ts';
 import type { Harness } from './setup-document.ts';
 
 function isExecutableFile(candidate: string, ctx: RunContext): boolean {
@@ -39,11 +39,21 @@ function pathExists(template: string, ctx: RunContext): boolean {
   return expanded !== null && existsSync(expanded);
 }
 
-/** True when any detect command is on PATH or any detect path exists. */
+function xdgPathExists(relative: string, ctx: RunContext): boolean {
+  const expanded = expandXdgConfigPath(relative, ctx);
+  return expanded !== null && existsSync(expanded);
+}
+
+/**
+ * True when any detect command is on PATH or any detect path exists. While
+ * `XDG_CONFIG_HOME` is set, the XDG detect paths count too: a harness that
+ * follows XDG keeps its folder there, and the default folder may not exist.
+ */
 export function isHarnessPresent(harness: Harness, ctx: RunContext): boolean {
   try {
     if (harness.detect.commands.some((command) => findOnPath(command, ctx) !== null)) return true;
-    return harness.detect.paths.some((template) => pathExists(template, ctx));
+    if (harness.detect.paths.some((template) => pathExists(template, ctx))) return true;
+    return harness.detect.xdgConfigPaths.some((relative) => xdgPathExists(relative, ctx));
   } catch {
     // A detect path with an unknown variable only means "not found".
     return false;

@@ -59,7 +59,7 @@ function mergeOrRefuse(opts: { file: string; ctx: RunContext; merge: () => Merge
 }
 
 function planJsonMerge(action: JsonMergeAction, harness: Harness, input: PlanInput): StepPlan {
-  const file = resolveWriteTarget(templateFor(action, input.ctx.platform), input.ctx);
+  const file = resolveWriteTarget(action, input.ctx);
   const original = readTextIfExists(file);
   const jsonc = isJsonc({ action, harness, file });
   const outcome = mergeOrRefuse({
@@ -72,7 +72,7 @@ function planJsonMerge(action: JsonMergeAction, harness: Harness, input: PlanInp
 }
 
 function planTomlMerge(action: TomlMergeAction, input: PlanInput): StepPlan {
-  const file = resolveWriteTarget(templateFor(action, input.ctx.platform), input.ctx);
+  const file = resolveWriteTarget(action, input.ctx);
   const original = readTextIfExists(file);
   const outcome = mergeOrRefuse({
     file,
@@ -97,7 +97,7 @@ function planSkillFile(action: FileAction, input: PlanInput): StepPlan {
   const skill = input.doc.skill;
   if (skill === null || input.skillText === null) return { kind: 'not-offered' };
   if (!input.skillText.ok) return { kind: 'refused', reason: input.skillText.reason };
-  const file = resolveWriteTarget(templateFor(action, input.ctx.platform), input.ctx);
+  const file = resolveWriteTarget(action, input.ctx);
   const original = readTextIfExists(file);
   if (original === input.skillText.text) return { kind: 'already', file };
   const change: WriteChange = original === null ? 'create' : 'replace';

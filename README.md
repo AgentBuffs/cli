@@ -40,7 +40,7 @@ When the run ends, the terminal restores its previous state and leaves a
 short summary in the scrollback:
 
 ```
-┌   agentbuffs 0.3.0
+┌   agentbuffs 0.3.1
 │
 ◇  Done
 │  ✓ Claude Code          MCP server + skill
@@ -60,7 +60,7 @@ was written.`
 | --- | --- |
 | `--client <slug,...>` | Set up these agents, for example `claude-code,cursor` |
 | `--what mcp\|skill\|both` | Install only the MCP server, only the skill, or both |
-| `--yes` | Install without asking |
+| `--yes` | Install without asking: no questions at all. Without `--what` it installs both parts. Without `--client` it uses the agents it finds. |
 | `--dry-run` | Show the plan and every change, and write nothing |
 | `--verbose` | Show every change before asking |
 | `--no-fullscreen` | Print line by line instead of one screen per step |
@@ -98,8 +98,13 @@ Before modifying a file, the tool creates a `<file>.bak` copy and prints the
 path at the end. It writes updates to a temporary file before replacing the
 target. It skips unparseable files and files that already contain the target
 entry. If a conflicting `agentbuffs` entry exists, it prompts for
-confirmation. It writes files only within your home directory and the current
+confirmation (`--yes` replaces it without asking). It writes files only within your home directory and the current
 directory.
+
+An agent that follows `XDG_CONFIG_HOME` (OpenCode) gets its config there when
+the variable is set to an absolute path, and in `~/.config` otherwise. If
+`XDG_CONFIG_HOME` points outside your home directory, the tool does not write
+there. It tells you so and leaves that agent for you to set up by hand.
 
 ## Privacy
 

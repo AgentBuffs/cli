@@ -131,31 +131,37 @@ function harnessesBySlug(doc: SetupDocument, slugs: readonly string[]): Harness[
 async function chooseHarnesses(opts: { doc: SetupDocument; found: ReadonlySet<string>; io: CliIo; options: Options }): Promise<Harness[]> {
   const { doc, found, io, options } = opts;
   if (options.clients !== null) return harnessesBySlug(doc, options.clients);
-  if (!io.isInteractive) return doc.harnesses.filter((harness) => found.has(harness.slug));
+  if (!io.isInteractive || options.yes) return doc.harnesses.filter((harness) => found.has(harness.slug));
   const ordered = [...doc.harnesses.filter((h) => found.has(h.slug)), ...doc.harnesses.filter((h) => !found.has(h.slug))];
   const choices: HarnessChoice[] = ordered.map((harness) => ({ slug: harness.slug, label: harness.name, hint: found.has(harness.slug) ? 'found' : null }));
   const picked = await io.prompter.chooseHarnesses({ choices, preselected: [...found] });
   return harnessesBySlug(doc, picked);
 }
 
-/** The answer to "what should they get" when nobody is asked, or null when the question is asked. */
+/** The answer to "what should they get" when nobody is asked, or null when the question is asked. `--yes` never asks. */
 function whatWithoutAsking(opts: { doc: SetupDocument; harnesses: readonly Harness[]; io: CliIo; options: Options }): What | null {
   if (opts.options.what !== null) return opts.options.what;
   const anySkill = opts.doc.skill !== null && opts.harnesses.some((harness) => harness.skill !== null);
-  if (!anySkill || !opts.io.isInteractive) return anySkill ? 'both' : 'mcp';
+  if (!anySkill || opts.options.yes || !opts.io.isInteractive) return anySkill ? 'both' : 'mcp';
   return null;
+}
+
+/** The message for a run that needs an agent and found none. */
+function noAgentFound(doc: SetupDocument): string {
+  return `No agent found. Pick one with --client: ${doc.harnesses.map((harness) => harness.slug).join(', ')}`;
 }
 
 /**
  * The wizard's steps for this run: the agent list only without --client, the
- * parts question only without --what and when the setup offers a skill. The
+ * parts question only without --what and when the setup offers a skill. With
+ * --yes neither is asked (and the run is not full screen). The
  * parts step can still be answered without a question (no picked agent takes
  * a skill); it then counts as done.
  */
 function wizardSteps(opts: { doc: SetupDocument; options: Options }): WizardStep[] {
   return [
-    ...(opts.options.clients === null ? (['agents'] as const) : []),
-    ...(opts.options.what === null && opts.doc.skill !== null ? (['parts'] as const) : []),
+    ...(opts.options.clients === null && !opts.options.yes ? (['agents'] as const) : []),
+    ...(opts.options.what === null && !opts.options.yes && opts.doc.skill !== null ? (['parts'] as const) : []),
     'plan',
     'install',
   ];
@@ -279,6 +285,10 @@ async function run(io: CliIo): Promise<number> {
   const wizard = wizardSteps({ doc, options });
   enterStep({ io, steps: wizard, step: 'agents', answers: [] });
   const harnesses = await chooseHarnesses({ doc, found, io, options });
+  if (io.isInteractive && options.yes && options.clients === null && harnesses.length === 0) {
+    screen.fail(noAgentFound(doc));
+    return EXIT.usage;
+  }
   const agentsAnswer: Answer = { label: 'Agents', value: harnesses.length === 0 ? 'none' : listNames(harnesses.map((harness) => harness.name)) };
   const decidedWhat = whatWithoutAsking({ doc, harnesses, io, options });
   if (decidedWhat === null) enterStep({ io, steps: wizard, step: 'parts', answers: [agentsAnswer] });
@@ -295,7 +305,7 @@ async function run(io: CliIo): Promise<number> {
 
   if (!io.isInteractive && (options.clients === null || (!options.yes && !options.dryRun))) {
     screen.note(plan);
-    const noneFound = options.clients === null && harnesses.length === 0 ? `No agent found. Pick one with --client: ${doc.harnesses.map((h) => h.slug).join(', ')}\n` : '';
+    const noneFound = options.clients === null && harnesses.length === 0 ? `${noAgentFound(doc)}\n` : '';
     screen.fail(`${noneFound}No terminal to ask in. Run again with --client <slug,...> --yes to install, or add --dry-run to see every change.`);
     return EXIT.usage;
   }
