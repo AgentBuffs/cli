@@ -205,8 +205,8 @@ export function scriptedPrompter(answers: Answers): Prompter & { asked: string[]
       if (answers.what === 'cancel') throw new CancelledError('cancelled');
       return answers.what ?? 'both';
     },
-    async choosePlanAction({ canShowDetails }) {
-      asked.push(`plan details=${canShowDetails}`);
+    async choosePlanAction({ details }) {
+      asked.push(`plan details=${details !== null}`);
       const answer = plan.shift();
       if (answer === undefined) throw new Error('Unexpected plan question');
       if (answer === 'ctrl-c') throw new CancelledError('cancelled');

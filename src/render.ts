@@ -7,12 +7,15 @@
 import type { Paint } from './ansi.ts';
 import type { StepResult } from './apply.ts';
 import { displayPath, type RunContext } from './paths.ts';
-import type { Part, Step, StepPlan } from './plan.ts';
+import type { Part, Step, StepPlan, What } from './plan.ts';
 import { commandLine } from './run-action.ts';
 import type { Harness } from './setup-document.ts';
 
 const PART_NAME: Readonly<Record<Part, string>> = { mcp: 'MCP server', skill: 'skill' };
 const PART_SHORT: Readonly<Record<Part, string>> = { mcp: 'MCP', skill: 'skill' };
+
+/** The three answers to "What should they get?", as the question and the summary show them. */
+export const PART_CHOICE: Readonly<Record<What, string>> = { both: 'MCP server and skill', mcp: 'MCP server only', skill: 'Skill only' };
 
 /** The example the closing words suggest. */
 export const EXAMPLE_ASK = 'Find me an MCP server for Postgres.';
@@ -178,10 +181,14 @@ function resultSummary(results: readonly StepResult[]): string {
   ]);
 }
 
-/** One line per harness: `✓ Claude Code    MCP server + skill`, `• Codex    already set up`, `✗ ...`. */
-export function resultLines(opts: { results: readonly StepResult[]; paint: Paint }): string[] {
+/**
+ * One line per harness: `✓ Claude Code    MCP server + skill`, `• Codex    already set up`, `✗ ...`.
+ * `names` sets the name column's width; pass every harness of the run, so the
+ * lines do not move while results arrive one by one.
+ */
+export function resultLines(opts: { results: readonly StepResult[]; paint: Paint; names?: readonly string[] }): string[] {
   const groups = byHarness(opts.results, (result) => result.step.harness);
-  const pad = nameColumn(groups.map(([harness]) => harness.name));
+  const pad = nameColumn(opts.names ?? groups.map(([harness]) => harness.name));
   return groups.map(([harness, list]) => `${paintMark(markOf(list), opts.paint)} ${pad(harness.name)}${resultSummary(list)}`);
 }
 
@@ -202,7 +209,7 @@ export function backupLine(opts: { results: readonly StepResult[]; ctx: RunConte
 }
 
 /** `Claude Code, Cursor and Codex`. */
-function listNames(names: readonly string[]): string {
+export function listNames(names: readonly string[]): string {
   if (names.length <= 1) return names.join('');
   return `${names.slice(0, -1).join(', ')} and ${names.at(-1) ?? ''}`;
 }

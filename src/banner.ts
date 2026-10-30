@@ -133,14 +133,22 @@ const WORDMARK_WIDTH = Math.max(...wordmarkPixels().map((row) => row.length));
 /** Columns the banner needs. A narrower terminal gets no banner. */
 export const BANNER_WIDTH = MARK_WIDTH + GAP.length + Math.max(WORDMARK_WIDTH, TAGLINE.length);
 
-/** The banner lines: the mark on the left, the wordmark and a tagline beside it. */
-export function bannerLines(opts: { depth: ColorDepth }): string[] {
+/** Columns left beside the flame's base, for `beside`. */
+export const BESIDE_WIDTH = BANNER_WIDTH - MARK_WIDTH - GAP.length;
+
+/**
+ * The banner lines: the mark on the left, the wordmark and a tagline beside
+ * it. `beside` goes on the last line, level with the flame's base (the
+ * full-screen view puts the version and the step there); the caller keeps it
+ * within `BESIDE_WIDTH` columns.
+ */
+export function bannerLines(opts: { depth: ColorDepth; beside?: string }): string[] {
   const { depth } = opts;
   const mark = toCells(MARK, depth);
   const word = toCells(wordmarkPixels(), depth);
   const tagline = depth > 1 ? sgr(['2'], TAGLINE) : TAGLINE;
-  // Wordmark on lines 2 to 5 of the 8, the tagline on line 7, level with the flame's base.
-  const right: readonly string[] = ['', ...word, '', tagline, ''];
+  // Wordmark on lines 2 to 5 of the 8, the tagline on line 7, `beside` on line 8.
+  const right: readonly string[] = ['', ...word, '', tagline, opts.beside ?? ''];
   return mark.map((line, index) => {
     const beside = right[index] ?? '';
     return beside === '' ? line : `${line}${GAP}${beside}`;
