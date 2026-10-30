@@ -69,8 +69,9 @@ describe('the CLI against a fixture server on a temp HOME', () => {
     const result = await runCli({ env, argv: ['--client', 'claude-code,cursor,vscode,codex', '--dry-run', '--yes', ...api()] });
     assert.equal(result.code, 0, result.err);
     assert.deepEqual(snapshotTree(env.root), before);
-    assert.match(result.out, /Dry run: nothing was written\./);
-    assert.match(result.out, /MCP: run claude mcp add --transport http agentbuffs https:\/\/agentbuffs\.com\/api\/mcp/);
+    assert.match(result.out, /Plan\n {2}Claude Code {3}MCP server \+ skill\n {2}Cursor {8}MCP server\n/);
+    assert.match(result.out, /MCP {4}run claude mcp add --transport http agentbuffs https:\/\/agentbuffs\.com\/api\/mcp/);
+    assert.match(result.out, /Dry run\. Nothing was written\./);
   });
 
   it('without a terminal and without --client and --yes, prints the plan and exits 2', async () => {
@@ -78,7 +79,8 @@ describe('the CLI against a fixture server on a temp HOME', () => {
     const before = snapshotTree(env.root);
     const result = await runCli({ env, argv: api() });
     assert.equal(result.code, 2);
-    assert.match(result.out, /Plan:\n {2}Cursor \(found\)\n {4}MCP: create ~\/\.cursor\/mcp\.json/);
+    assert.match(result.out, /Plan\n {2}Cursor {3}MCP server$/m);
+    assert.doesNotMatch(result.out, /mcp\.json/, 'the compact plan names no paths');
     assert.match(result.err, /No terminal to ask in/);
     assert.deepEqual(snapshotTree(env.root), before);
 
@@ -89,23 +91,43 @@ describe('the CLI against a fixture server on a temp HOME', () => {
     assert.deepEqual(snapshotTree(env.root), before);
   });
 
-  it('preselects and marks the harnesses it finds, and marks MCP only', async () => {
+  it('lists the harnesses it finds first, preselected and marked found', async () => {
     mkdirSync(path.join(env.home, '.cursor'));
     fakeCommand(env, { name: 'codex', script: '#!/bin/sh\nexit 0\n' });
-    const result = await runCli({ env, argv: api(), interactive: true, answers: { harnesses: ['cursor'], confirms: [false] } });
+    const result = await runCli({ env, argv: api(), interactive: true, answers: { harnesses: ['cursor'], plan: ['cancel'] } });
     assert.equal(result.code, 0, result.err);
-    assert.match(result.asked[0] ?? '', /^harnesses preselected=cursor,codex choices=cursor\(found, MCP only\),codex\(found\),claude-code\(not found\)/);
+    assert.match(result.asked[0] ?? '', /^harnesses preselected=cursor,codex choices=cursor\(found\),codex\(found\),claude-code\(\)/);
     assert.match(result.out, /Nothing was written\./);
   });
 
-  for (const where of ['harnesses', 'what', 'confirm', 'replace'] as const) {
+  it('shows the changes on request, asks again without that choice, and writes nothing on cancel', async () => {
+    mkdirSync(path.join(env.home, '.cursor'));
+    const before = snapshotTree(env.root);
+    const result = await runCli({ env, argv: api(), interactive: true, answers: { harnesses: ['cursor'], plan: ['details', 'cancel'] } });
+    assert.equal(result.code, 0, result.err);
+    assert.deepEqual(result.asked.slice(1), ['plan details=true', 'plan details=false']);
+    assert.match(result.out, /Plan\n {2}Cursor {3}MCP server\n\nChanges\n {2}Cursor\n {4}MCP {4}create ~\/\.cursor\/mcp\.json\n {11}mcpServers\.agentbuffs = /);
+    assert.match(result.out, /Nothing was written\./);
+    assert.deepEqual(snapshotTree(env.root), before);
+  });
+
+  it('--verbose shows the changes before it asks', async () => {
+    mkdirSync(path.join(env.home, '.cursor'));
+    const result = await runCli({ env, argv: ['--verbose', ...api()], interactive: true, answers: { harnesses: ['cursor'], plan: ['install'] } });
+    assert.equal(result.code, 0, result.err);
+    assert.deepEqual(result.asked.slice(1), ['plan details=false']);
+    assert.ok(result.out.indexOf('Changes') < result.out.indexOf('✓ Cursor'), result.out);
+  });
+
+  for (const where of ['harnesses', 'what', 'plan', 'replace'] as const) {
     it(`Ctrl+C at the ${where} question exits 130 and writes nothing`, async () => {
       writeFile(path.join(env.home, '.cursor', 'mcp.json'), JSON.stringify({ mcpServers: { agentbuffs: { url: 'https://old.example' } } }));
       const before = snapshotTree(env.root);
       const answers = {
         harnesses: where === 'harnesses' ? ('cancel' as const) : ['cursor', 'codex'],
         what: where === 'what' ? ('cancel' as const) : ('both' as const),
-        confirms: where === 'confirm' ? ['cancel' as const] : [true, 'cancel' as const],
+        plan: where === 'plan' ? ['ctrl-c' as const] : ['install' as const],
+        confirms: ['cancel' as const],
       };
       const result = await runCli({ env, argv: api(), interactive: true, answers });
       assert.equal(result.code, 130);
@@ -119,9 +141,9 @@ describe('the CLI against a fixture server on a temp HOME', () => {
     const first = await runCli({ env, argv: ['--client', 'codex', '--what', 'skill', '--yes', ...api()] });
     assert.equal(first.code, 0, first.err);
     assert.equal(readText(skillFile), SKILL_TEXT);
-    assert.match(first.out, /Codex: skill done: wrote ~\/\.codex\/skills\/find-agent-tools\/SKILL\.md/);
+    assert.match(first.out, /✓ Codex +skill\n/);
     const second = await runCli({ env, argv: ['--client', 'codex', '--what', 'skill', '--yes', ...api()] });
-    assert.match(second.out, /Codex: skill skipped: already there/);
+    assert.match(second.out, /• Codex +already set up/);
   });
 
   it('shows manual steps with the docs link, YAML as a snippet, and an unknown kind as an update hint', async () => {
@@ -192,7 +214,7 @@ describe('the CLI when the server or the document is wrong', () => {
     try {
       const result = await runCli({ env, argv: ['--client', 'codex', '--yes', '--api', server.origin] });
       assert.equal(result.code, 1);
-      assert.match(result.out, /skill failed: The skill file at .* does not match its checksum/);
+      assert.match(result.out, /✗ Codex +MCP server \(skill: The skill file at \S+ does not match its checksum\)\n/);
       assert.equal(existsSync(path.join(env.home, '.codex', 'skills')), false);
       assert.match(readText(path.join(env.home, '.codex', 'config.toml')), /\[mcp_servers\.agentbuffs\]/);
     } finally {
@@ -214,7 +236,7 @@ describe('the CLI when the server or the document is wrong', () => {
     try {
       const result = await runCli({ env, argv: ['--client', 'codex,pi', '--what', 'skill', '--yes', '--api', server.origin] });
       assert.equal(result.code, 0, result.out);
-      assert.match(result.out, /Codex: skill done: wrote ~\/\.agents\/skills\/find-agent-tools\/SKILL\.md\nPi: skill skipped: already there/);
+      assert.match(result.out, /✓ Codex +skill\n +• Pi +already set up/);
       assert.equal(readText(path.join(env.home, '.agents', 'skills', 'find-agent-tools', 'SKILL.md')), SKILL_TEXT);
     } finally {
       await server.close();
@@ -235,8 +257,8 @@ describe('the CLI when the server or the document is wrong', () => {
     try {
       const result = await runCli({ env, argv: ['--client', 'up,abs', '--yes', '--api', server.origin] });
       assert.equal(result.code, 1);
-      assert.match(result.out, /Up: MCP not offered; skill failed: ~\/\.\.\/outside\.md resolves to .*outside your home folder and this project/);
-      assert.match(result.out, /Abs: MCP failed: .*outside your home folder and this project/);
+      assert.match(result.out, /✗ Up +skill: ~\/\.\.\/outside\.md resolves to .*outside your home folder and this project/);
+      assert.match(result.out, /✗ Abs +MCP: .*outside your home folder and this project/);
       assert.equal(existsSync(outside), false);
     } finally {
       await server.close();

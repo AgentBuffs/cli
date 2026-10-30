@@ -67,7 +67,7 @@ export async function fetchSkillText(opts: { skill: SkillSource; api: string; ve
   if (text.length > MAX_SKILL_BYTES) throw new NetworkError(`The skill file at ${url.href} is too large`);
   const actual = sha256Hex(text);
   if (actual !== opts.skill.sha256) {
-    throw new NetworkError(`The skill file at ${url.href} does not match its checksum (expected ${opts.skill.sha256}, got ${actual})`);
+    throw new NetworkError(`The skill file at ${url.href} does not match its checksum`);
   }
   return text;
 }

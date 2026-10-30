@@ -85,7 +85,7 @@ describe('run through the CLI with a fake harness CLI on PATH', () => {
       const result = await runCli({ env, argv: ['--client', 'claude-code', '--api', server.origin, '--yes'] });
       assert.equal(result.code, 0, result.err);
       assert.deepEqual(logLines(), ['mcp', 'get', 'agentbuffs', '--', 'mcp', 'add', '--transport', 'http', 'agentbuffs', url, '--']);
-      assert.match(result.out, /Claude Code: MCP done: ran claude mcp add/);
+      assert.match(result.out, /✓ Claude Code +MCP server\n/);
     } finally {
       await server.close();
     }
@@ -97,7 +97,7 @@ describe('run through the CLI with a fake harness CLI on PATH', () => {
       await runCli({ env, argv: ['--client', 'claude-code', '--what', 'mcp', '--api', server.origin, '--yes'] });
       const second = await runCli({ env, argv: ['--client', 'claude-code', '--what', 'mcp', '--api', server.origin, '--yes'] });
       assert.equal(second.code, 0, second.err);
-      assert.match(second.out, /Claude Code: MCP skipped: already there/);
+      assert.match(second.out, /• Claude Code +already set up/);
       assert.equal(logLines().filter((line) => line === 'add').length, 1);
     } finally {
       await server.close();
@@ -110,7 +110,7 @@ describe('run through the CLI with a fake harness CLI on PATH', () => {
     try {
       const result = await runCli({ env, argv: ['--client', 'claude-code', '--what', 'mcp', '--api', server.origin, '--yes'] });
       assert.equal(result.code, 1);
-      assert.match(result.out, /Claude Code: MCP failed: claude said: exit code 4: boom: config locked/);
+      assert.match(result.out, /✗ Claude Code +MCP: claude failed, exit code 4: boom: config locked/);
     } finally {
       await server.close();
     }
@@ -127,7 +127,7 @@ describe('run through the CLI with a fake harness CLI on PATH', () => {
     try {
       const result = await runCli({ env, argv: ['--client', 'evil', '--api', server.origin, '--yes'] });
       assert.equal(result.code, 1);
-      assert.match(result.out, /will not change: the command "bash" is not one this CLI runs/);
+      assert.match(result.out, /✗ Evil +MCP: the command "bash" is not one this CLI runs/);
       assert.equal(existsSync(path.join(env.bin, 'bash-ran')), false);
     } finally {
       await server.close();
@@ -144,7 +144,7 @@ describe('run through the CLI with a fake harness CLI on PATH', () => {
     try {
       const result = await runCli({ env, argv: ['--client', 'claude-code', '--api', server.origin, '--yes'] });
       assert.equal(result.code, 1);
-      assert.match(result.out, /the arguments do not contain/);
+      assert.match(result.out, /✗ Claude Code +MCP: the arguments do not contain/);
       assert.equal(existsSync(path.join(env.bin, 'claude.log')), false);
     } finally {
       await server.close();

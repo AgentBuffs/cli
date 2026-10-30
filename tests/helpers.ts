@@ -10,8 +10,9 @@ import path from 'node:path';
 import { main, type CliIo } from '../src/main.ts';
 import type { RunContext } from '../src/paths.ts';
 import type { What } from '../src/plan.ts';
-import { CancelledError, type Prompter } from '../src/prompts.ts';
+import { CancelledError, type PlanAction, type Prompter } from '../src/prompts.ts';
 import { execWithoutShell, type ExecFn } from '../src/run-action.ts';
+import { plainScreen } from '../src/screen.ts';
 
 export const MCP_URL = 'https://agentbuffs.com/api/mcp';
 export const SKILL_TEXT = '---\nname: find-agent-tools\ndescription: Find MCP servers and skills.\n---\n\nAsk agentbuffs.\n';
@@ -181,6 +182,8 @@ export function snapshotTree(dir: string): Record<string, string> {
 export type Answers = {
   harnesses?: string[] | 'cancel';
   what?: What | 'cancel';
+  /** Answers to the plan question, in order; 'ctrl-c' cancels. */
+  plan?: Array<PlanAction | 'ctrl-c'>;
   /** Answers to confirm questions, in order. */
   confirms?: Array<boolean | 'cancel'>;
 };
@@ -189,10 +192,11 @@ export type Answers = {
 export function scriptedPrompter(answers: Answers): Prompter & { asked: string[] } {
   const asked: string[] = [];
   const confirms = [...(answers.confirms ?? [])];
+  const plan = [...(answers.plan ?? [])];
   return {
     asked,
     async chooseHarnesses({ choices, preselected }) {
-      asked.push(`harnesses preselected=${preselected.join(',')} choices=${choices.map((c) => `${c.slug}(${c.hint})`).join(',')}`);
+      asked.push(`harnesses preselected=${preselected.join(',')} choices=${choices.map((c) => `${c.slug}(${c.hint ?? ''})`).join(',')}`);
       if (answers.harnesses === 'cancel') throw new CancelledError('cancelled');
       return answers.harnesses ?? [...preselected];
     },
@@ -200,6 +204,13 @@ export function scriptedPrompter(answers: Answers): Prompter & { asked: string[]
       asked.push('what');
       if (answers.what === 'cancel') throw new CancelledError('cancelled');
       return answers.what ?? 'both';
+    },
+    async choosePlanAction({ canShowDetails }) {
+      asked.push(`plan details=${canShowDetails}`);
+      const answer = plan.shift();
+      if (answer === undefined) throw new Error('Unexpected plan question');
+      if (answer === 'ctrl-c') throw new CancelledError('cancelled');
+      return answer;
     },
     async confirm(message) {
       asked.push(message);
@@ -227,7 +238,7 @@ export async function runCli(opts: {
   const io: CliIo = {
     argv: opts.argv,
     out: (text) => out.push(text),
-    err: (text) => err.push(text),
+    screen: plainScreen({ out: (text) => out.push(text), err: (text) => err.push(text) }),
     isInteractive: opts.interactive ?? false,
     ctx: opts.env.ctx,
     prompter,

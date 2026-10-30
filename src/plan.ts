@@ -86,7 +86,7 @@ function planTomlMerge(action: TomlMergeAction, input: PlanInput): StepPlan {
 function planRun(action: RunAction, input: PlanInput): StepPlan {
   assertRunAllowed(action, input.doc.mcpUrl);
   const commandPath = findOnPath(action.command, input.ctx);
-  if (commandPath === null) return { kind: 'refused', reason: `${action.command} is not on your PATH` };
+  if (commandPath === null) return { kind: 'refused', reason: `${action.command} not found on PATH` };
   if (input.ctx.platform === 'win32' && /\.(cmd|bat)$/i.test(commandPath)) {
     return { kind: 'manual', lines: [`Run this yourself: ${commandLine(action)}`] };
   }
@@ -101,7 +101,8 @@ function planSkillFile(action: FileAction, input: PlanInput): StepPlan {
   const original = readTextIfExists(file);
   if (original === input.skillText.text) return { kind: 'already', file };
   const change: WriteChange = original === null ? 'create' : 'replace';
-  const preview = [`the ${skill.name} skill, ${Buffer.byteLength(input.skillText.text)} bytes, sha256 ${skill.sha256.slice(0, 12)}`];
+  const kilobytes = (Buffer.byteLength(input.skillText.text) / 1024).toFixed(1);
+  const preview = [`the ${skill.name} skill, ${kilobytes} KB, sha256 ${skill.sha256.slice(0, 12)}`];
   return { kind: 'write', file, original, text: input.skillText.text, change, preview };
 }
 

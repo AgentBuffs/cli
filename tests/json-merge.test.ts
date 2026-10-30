@@ -94,8 +94,9 @@ describe('json-merge through the CLI on a temp HOME', () => {
     assert.deepEqual(JSON.parse(readText(cursorFile())), { mcpServers: { agentbuffs: { url: MCP_URL } } });
     assert.ok(readText(cursorFile()).endsWith('}\n'));
     assert.equal(existsSync(`${cursorFile()}.bak`), false);
-    assert.match(result.out, /Cursor: MCP done: wrote ~\/\.cursor\/mcp\.json/);
-    assert.match(result.out, /Restart Cursor, then ask your agent to find a tool\./);
+    assert.match(result.out, /✓ Cursor +MCP server\n/);
+    assert.doesNotMatch(result.out, /Backups:/);
+    assert.match(result.out, /Restart Cursor, then ask your agent:\n"Find me an MCP server for Postgres\."/);
   });
 
   it('keeps other keys and writes a .bak of the original', async () => {
@@ -108,6 +109,7 @@ describe('json-merge through the CLI on a temp HOME', () => {
       other: true,
     });
     assert.equal(readText(`${cursorFile()}.bak`), original);
+    assert.match(result.out, /Backups: ~\/\.cursor\/mcp\.json\.bak/);
   });
 
   it('refuses an unparseable file, leaves it alone and exits 1', async () => {
@@ -117,8 +119,8 @@ describe('json-merge through the CLI on a temp HOME', () => {
     assert.equal(result.code, 1);
     assert.equal(readText(cursorFile()), broken);
     assert.equal(existsSync(`${cursorFile()}.bak`), false);
-    assert.match(result.out, /will not change: ~\/\.cursor\/mcp\.json was not changed: it is not valid JSON/);
-    assert.match(result.out, /Cursor: MCP failed/);
+    assert.match(result.out, /✗ Cursor +MCP: ~\/\.cursor\/mcp\.json was not changed: it is not valid JSON/);
+    assert.match(result.out, /Nothing new was installed\./);
   });
 
   it('is idempotent: a second run says already there and writes nothing', async () => {
@@ -128,17 +130,17 @@ describe('json-merge through the CLI on a temp HOME', () => {
     assert.equal(result.code, 0, result.err);
     assert.equal(readText(cursorFile()), first);
     assert.equal(existsSync(`${cursorFile()}.bak`), false);
-    assert.match(result.out, /Cursor: MCP skipped: already there/);
+    assert.match(result.out, /• Cursor +already set up/);
   });
 
   it('asks before replacing a different agentbuffs entry, and keeps it on no', async () => {
     const original = JSON.stringify({ mcpServers: { agentbuffs: { url: 'https://old.example/mcp' } } }, null, 2);
     writeFile(cursorFile(), original);
-    const result = await runCli({ env, argv: cursorArgs(), interactive: true, answers: { confirms: [true, false] } });
+    const result = await runCli({ env, argv: cursorArgs(), interactive: true, answers: { plan: ['install'], confirms: [false] } });
     assert.equal(result.code, 0, result.err);
     assert.match(result.asked[1] ?? '', /Cursor already has a different agentbuffs entry\. Replace it\?/);
     assert.equal(readText(cursorFile()), original);
-    assert.match(result.out, /Cursor: MCP skipped: kept the existing entry/);
+    assert.match(result.out, /• Cursor +MCP: kept the existing entry in ~\/\.cursor\/mcp\.json/);
   });
 
   it('replaces a different entry with --yes and says so', async () => {
@@ -146,7 +148,9 @@ describe('json-merge through the CLI on a temp HOME', () => {
     const result = await runCli({ env, argv: cursorArgs('--yes') });
     assert.equal(result.code, 0, result.err);
     assert.deepEqual(JSON.parse(readText(cursorFile())), { mcpServers: { agentbuffs: { url: MCP_URL } } });
-    assert.match(result.out, /replaced the existing entry in ~\/\.cursor\/mcp\.json, backup ~\/\.cursor\/mcp\.json\.bak/);
+    assert.match(result.out, /replace the agentbuffs entry in ~\/\.cursor\/mcp\.json|✓ Cursor +MCP server/);
+    assert.match(result.out, /✓ Cursor +MCP server\n/);
+    assert.match(result.out, /Backups: ~\/\.cursor\/mcp\.json\.bak/);
   });
 
   it('keeps comments in VS Code project JSONC', async () => {

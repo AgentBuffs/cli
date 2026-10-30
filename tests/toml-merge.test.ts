@@ -131,12 +131,13 @@ describe('toml-merge for Codex through the CLI on a temp HOME', () => {
     assert.equal(first.code, 0, first.err);
     assert.equal(readText(codexFile()), `${original}\n${TABLE}`);
     assert.equal(readText(`${codexFile()}.bak`), original);
-    assert.match(first.out, /Codex: MCP done: wrote ~\/\.codex\/config\.toml, backup ~\/\.codex\/config\.toml\.bak/);
+    assert.match(first.out, /✓ Codex +MCP server\n/);
+    assert.match(first.out, /Backups: ~\/\.codex\/config\.toml\.bak/);
 
     const second = await runCli({ env, argv: codexArgs('--yes') });
     assert.equal(second.code, 0, second.err);
     assert.equal(readText(codexFile()), `${original}\n${TABLE}`);
-    assert.match(second.out, /Codex: MCP skipped: already there/);
+    assert.match(second.out, /• Codex +already set up/);
   });
 
   it('refuses an unparseable file and leaves it alone', async () => {
@@ -151,7 +152,7 @@ describe('toml-merge for Codex through the CLI on a temp HOME', () => {
 
   it('asks before replacing a different table, and replaces it on yes', async () => {
     writeFile(codexFile(), '[mcp_servers.agentbuffs]\nurl = "https://old.example/mcp"\n');
-    const result = await runCli({ env, argv: codexArgs(), interactive: true, answers: { confirms: [true, true] } });
+    const result = await runCli({ env, argv: codexArgs(), interactive: true, answers: { plan: ['install'], confirms: [true] } });
     assert.equal(result.code, 0, result.err);
     assert.match(result.asked[1] ?? '', /Codex already has a different agentbuffs entry/);
     assert.equal(readText(codexFile()), TABLE);

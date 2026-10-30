@@ -83,8 +83,10 @@ describe('the bundle', () => {
     const before = snapshotTree(env.root);
     const result = await runBundle({ file: copied, args: ['--dry-run', '--client', 'cursor', '--yes', '--api', server.origin], env });
     assert.equal(result.code, 0, result.stderr);
-    assert.match(result.stdout, /Cursor\n {4}MCP: create ~\/\.cursor\/mcp\.json/);
-    assert.match(result.stdout, /Dry run: nothing was written\./);
+    assert.match(result.stdout, /Plan\n {2}Cursor {3}MCP server\n/);
+    assert.match(result.stdout, /Changes\n {2}Cursor\n {4}MCP {4}create ~\/\.cursor\/mcp\.json/);
+    assert.match(result.stdout, /Dry run\. Nothing was written\./);
+    assert.doesNotMatch(result.stdout, /\u001b\[/, 'a pipe gets no colour codes');
     assert.deepEqual(snapshotTree(env.root), before);
     console.log(result.stdout);
   });
@@ -92,7 +94,7 @@ describe('the bundle', () => {
   it('without a terminal and without flags prints the plan and exits 2', async () => {
     const result = await runBundle({ file: copied, args: ['--api', server.origin], env });
     assert.equal(result.code, 2);
-    assert.match(result.stdout, /^Plan:/);
+    assert.match(result.stdout, /^agentbuffs \d+\.\d+\.\d+\n\nPlan\n/);
     assert.match(result.stderr, /No terminal to ask in/);
   });
 });
