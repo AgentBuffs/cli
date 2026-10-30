@@ -1,0 +1,52 @@
+{
+  "name": "agentbuffs",
+  "version": "0.1.0",
+  "description": "Install the agentbuffs MCP server and skill into your agent harness.",
+  "license": "MIT",
+  "author": "agentbuffs",
+  "homepage": "https://agentbuffs.com",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/AgentBuffs/cli.git"
+  },
+  "bugs": {
+    "url": "https://github.com/AgentBuffs/cli/issues"
+  },
+  "keywords": [
+    "mcp",
+    "agent",
+    "skills",
+    "claude-code",
+    "cursor",
+    "codex",
+    "installer"
+  ],
+  "type": "module",
+  "bin": {
+    "agentbuffs": "dist/cli.mjs"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test --test-concurrency=1 \"tests/**/*.test.ts\"",
+    "check": "pnpm typecheck && pnpm build && pnpm test",
+    "prepublishOnly": "pnpm check"
+  },
+  "devDependencies": {
+    "@clack/prompts": "^1.8.1",
+    "@types/node": "^24.19.2",
+    "esbuild": "^0.28.2",
+    "jsonc-parser": "^3.3.1",
+    "smol-toml": "^1.9.1",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2"
+  }
+}

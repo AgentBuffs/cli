@@ -1,0 +1,10 @@
+# This repo is its own pnpm workspace root, so pnpm does not attach it to a
+# workspace file in a parent folder.
+packages:
+  - .
+
+allowBuilds:
+  esbuild: true
+
+# A published version must be a week old before pnpm resolves it.
+minimumReleaseAge: 10080
