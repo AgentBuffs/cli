@@ -209,6 +209,41 @@ describe('the CLI against a fixture server on a temp HOME', () => {
     assert.match(result.err, /Unknown --client nope\. Known: claude-code, cursor/);
   });
 
+  it('without a terminal, --dry-run alone exits 0, plans the found agents and lists every slug', async () => {
+    mkdirSync(path.join(env.home, '.cursor'));
+    const doc = parseSetupDocument(fixtureDocument({ origin: server.origin }));
+    const before = snapshotTree(env.root);
+    const result = await runCli({ env, argv: ['--dry-run', ...api()] });
+    assert.equal(result.code, 0, result.err);
+    assert.match(result.out, /Plan\n {2}Cursor {3}MCP server\n/);
+    assert.match(result.out, /Agents you can pass to --client\n/);
+    for (const harness of doc.harnesses) {
+      assert.match(result.out, new RegExp(`^ *${harness.slug} +${harness.name}$`, 'm'), `${harness.slug} is listed with its name`);
+    }
+    assert.match(result.out, /Dry run\. Nothing was written\./);
+    assert.deepEqual(snapshotTree(env.root), before);
+  });
+
+  it('without a terminal, a run that is not a dry run still stops with exit 2 and the slug list', async () => {
+    const doc = parseSetupDocument(fixtureDocument({ origin: server.origin }));
+    const result = await runCli({ env, argv: api() });
+    assert.equal(result.code, 2);
+    assert.match(result.err, /Agents you can pass to --client:\n/);
+    for (const harness of doc.harnesses) {
+      assert.match(result.err, new RegExp(`^ {2}${harness.slug} +${harness.name}$`, 'm'), `${harness.slug} is listed with its name`);
+    }
+    const withClient = await runCli({ env, argv: ['--client', 'cursor', ...api()] });
+    assert.equal(withClient.code, 2);
+    assert.doesNotMatch(withClient.err, /Agents you can pass/, 'a run that named its agent needs no list');
+  });
+
+  it('refuses an unknown --client with every known slug, exit 2', async () => {
+    const doc = parseSetupDocument(fixtureDocument({ origin: server.origin }));
+    const result = await runCli({ env, argv: ['--client', 'opencod', '--dry-run', ...api()] });
+    assert.equal(result.code, 2);
+    assert.match(result.err, new RegExp(`Unknown --client opencod\\. Known: ${doc.harnesses.map((harness) => harness.slug).join(', ')}\n`));
+  });
+
   it('refuses an unknown flag, exit 2', async () => {
     const result = await runCli({ env, argv: ['--force'] });
     assert.equal(result.code, 2);

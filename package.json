@@ -1,6 +1,6 @@
 {
   "name": "agentbuffs",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "Install the agentbuffs MCP server and skill into your agent harness.",
   "license": "MIT",
   "author": "agentbuffs",

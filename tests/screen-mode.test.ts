@@ -85,6 +85,14 @@ describe('linear runs', () => {
     assert.match(result.out, /--no-fullscreen {4}Print line by line instead of one screen per step/);
   });
 
+  it('shows an example slug for --client and says where the full list is', async () => {
+    const result = await runCli({ env, argv: ['--help'] });
+    assert.equal(result.code, 0);
+    assert.match(result.out, /--client <slugs> {3}Agents to set up, comma separated, for example\n {21}opencode or claude-code,codex\. Without a terminal,\n {21}--dry-run alone lists every agent and its slug\./);
+    assert.doesNotMatch(result.out, /comma separated: claude-code,cursor/, 'no list that reads as the whole list');
+    for (const line of result.out.split('\n')) assert.ok(line.length <= 72, `help line stays narrow: ${line}`);
+  });
+
   it('never enter the alternate screen or clear it, in a terminal with --yes', async () => {
     const chunks: string[] = [];
     const stdout = fakeTerminal({ columns: 80, rows: 24 }, (text) => chunks.push(text));

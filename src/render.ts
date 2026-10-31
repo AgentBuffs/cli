@@ -208,6 +208,12 @@ export function backupLine(opts: { results: readonly StepResult[]; ctx: RunConte
   return `Backups: ${backups.join(', ')}`;
 }
 
+/** One line per harness, slug first so it can be copied into --client: `  claude-code   Claude Code`. */
+export function agentSlugLines(harnesses: readonly Harness[]): string[] {
+  const pad = nameColumn(harnesses.map((harness) => harness.slug));
+  return harnesses.map((harness) => `  ${pad(harness.slug)}${harness.name}`);
+}
+
 /** `Claude Code, Cursor and Codex`. */
 export function listNames(names: readonly string[]): string {
   if (names.length <= 1) return names.join('');

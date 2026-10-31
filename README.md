@@ -40,7 +40,7 @@ When the run ends, the terminal restores its previous state and leaves a
 short summary in the scrollback:
 
 ```
-┌   agentbuffs 0.3.1
+┌   agentbuffs 0.3.2
 │
 ◇  Done
 │  ✓ Claude Code          MCP server + skill
@@ -58,7 +58,7 @@ was written.`
 
 | Flag | What it does |
 | --- | --- |
-| `--client <slug,...>` | Set up these agents, for example `claude-code,cursor` |
+| `--client <slug,...>` | Set up these agents, for example `opencode` or `claude-code,codex`. Without a terminal, `--dry-run` alone lists every agent and its slug. |
 | `--what mcp\|skill\|both` | Install only the MCP server, only the skill, or both |
 | `--yes` | Install without asking: no questions at all. Without `--what` it installs both parts. Without `--client` it uses the agents it finds. |
 | `--dry-run` | Show the plan and every change, and write nothing |

@@ -13,7 +13,7 @@ import { DEFAULT_API, NetworkError, fetchSetupDocument, fetchSkillText } from '.
 import type { RunContext } from './paths.ts';
 import { PARTS_FOR, buildPlan, isActionable, type SkillText, type Step, type What } from './plan.ts';
 import { CancelledError, type DetailsOffer, type HarnessChoice, type Prompter } from './prompts.ts';
-import { PART_CHOICE, backupLine, closing, detailLines, listNames, manualLines, planLines, resultLines } from './render.ts';
+import { PART_CHOICE, agentSlugLines, backupLine, closing, detailLines, listNames, manualLines, planLines, resultLines } from './render.ts';
 import type { Screen } from './screen.ts';
 import type { ExecFn } from './run-action.ts';
 import { SetupDocumentError, UnsupportedSetupVersionError, type Harness, type SetupDocument } from './setup-document.ts';
@@ -42,7 +42,9 @@ Usage
   npx agentbuffs [options]
 
 Options
-  --client <slugs>   Agents to set up, comma separated: claude-code,cursor
+  --client <slugs>   Agents to set up, comma separated, for example
+                     opencode or claude-code,codex. Without a terminal,
+                     --dry-run alone lists every agent and its slug.
   --what <part>      mcp, skill or both
   -y, --yes          Install without asking
   --dry-run          Show every change and write nothing
@@ -303,10 +305,11 @@ async function run(io: CliIo): Promise<number> {
   const showPage = (page: number): void =>
     screen.section({ title: pages.length === 1 ? 'Changes' : `Changes, page ${page + 1} of ${pages.length}`, lines: pages[page] ?? [] });
 
-  if (!io.isInteractive && (options.clients === null || (!options.yes && !options.dryRun))) {
+  if (!io.isInteractive && !options.dryRun && (options.clients === null || !options.yes)) {
     screen.note(plan);
-    const noneFound = options.clients === null && harnesses.length === 0 ? `${noAgentFound(doc)}\n` : '';
-    screen.fail(`${noneFound}No terminal to ask in. Run again with --client <slug,...> --yes to install, or add --dry-run to see every change.`);
+    const noneFound = options.clients === null && harnesses.length === 0 ? 'No agent found.\n' : '';
+    const agents = options.clients === null ? `\nAgents you can pass to --client:\n${agentSlugLines(doc.harnesses).join('\n')}` : '';
+    screen.fail(`${noneFound}No terminal to ask in. Run again with --client <slug,...> --yes to install, or add --dry-run to see every change.${agents}`);
     return EXIT.usage;
   }
   if (options.dryRun) {
@@ -316,6 +319,8 @@ async function run(io: CliIo): Promise<number> {
     screen.section({ title: 'Changes', lines: changes });
     const manual = manualLines({ steps, paint: screen.paint, width: screen.width });
     if (manual.length > 0) screen.section({ title: 'Set up by hand', lines: manual });
+    // Without a terminal and without --client, the plan covers only the agents found; this is where an agent learns the rest.
+    if (!io.isInteractive && options.clients === null) screen.section({ title: 'Agents you can pass to --client', lines: agentSlugLines(doc.harnesses) });
     screen.end({ lines: ['Dry run. Nothing was written.'], aside: null });
     return EXIT.ok;
   }
