@@ -12,7 +12,7 @@ releases.
 1. Add release notes to `CHANGELOG.md`. Insert a heading `## [x.y.z] - unreleased`
    above the previous release, followed by `Added`, `Changed` or `Fixed` sections.
    Add the comparison link at the bottom:
-   `[x.y.z]: https://github.com/AgentBuffs/cli/compare/vPREVIOUS...vx.y.z`.
+   `[x.y.z]: https://github.com/agentbuffs/cli/compare/vPREVIOUS...vx.y.z`.
 2. Commit the changes and the notes to `main`. Push `main`.
 3. Run:
 

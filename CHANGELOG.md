@@ -4,6 +4,12 @@ All notable changes to this project are written here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 The versions follow [Semantic Versioning](https://semver.org/).
 
+## [0.4.1] - unreleased
+
+### Fixed
+
+- `repository.url` in `package.json` uses the GitHub organization name in lower case, `agentbuffs`. npm compares it with the provenance of the build and refused the 0.4.0 publish. 0.4.0 has a git tag but was never on npm. 0.4.1 has the same changes.
+
 ## [0.4.0] - 2026-11-01
 
 ### Added
@@ -71,9 +77,10 @@ The versions follow [Semantic Versioning](https://semver.org/).
 - It checks the skill file against its SHA-256 before it writes it.
 - The options are `--client`, `--what`, `--yes`, `--dry-run`, `--api`, `--version` and `--help`. The exit codes are 0, 1, 2 and 130.
 
-[0.4.0]: https://github.com/AgentBuffs/cli/compare/v0.3.2...v0.4.0
-[0.3.2]: https://github.com/AgentBuffs/cli/compare/v0.3.1...v0.3.2
-[0.3.1]: https://github.com/AgentBuffs/cli/compare/v0.3.0...v0.3.1
-[0.3.0]: https://github.com/AgentBuffs/cli/compare/v0.2.0...v0.3.0
-[0.2.0]: https://github.com/AgentBuffs/cli/compare/v0.1.0...v0.2.0
-[0.1.0]: https://github.com/AgentBuffs/cli/releases/tag/v0.1.0
+[0.4.1]: https://github.com/agentbuffs/cli/compare/v0.4.0...v0.4.1
+[0.4.0]: https://github.com/agentbuffs/cli/compare/v0.3.2...v0.4.0
+[0.3.2]: https://github.com/agentbuffs/cli/compare/v0.3.1...v0.3.2
+[0.3.1]: https://github.com/agentbuffs/cli/compare/v0.3.0...v0.3.1
+[0.3.0]: https://github.com/agentbuffs/cli/compare/v0.2.0...v0.3.0
+[0.2.0]: https://github.com/agentbuffs/cli/compare/v0.1.0...v0.2.0
+[0.1.0]: https://github.com/agentbuffs/cli/releases/tag/v0.1.0
