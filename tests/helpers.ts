@@ -22,25 +22,26 @@ export function sha256(text: string): string {
 }
 
 /** A setup document in the spec's shape, with one harness per action kind. */
-export function fixtureDocument(opts: { origin: string; skillSha?: string }): Record<string, unknown> {
+export function fixtureDocument(opts: { origin: string; skillSha?: string; mcpUrl?: string; skillQuery?: string }): Record<string, unknown> {
+  const url = opts.mcpUrl ?? MCP_URL;
   return {
     setupVersion: 1,
-    mcpUrl: MCP_URL,
+    mcpUrl: url,
     serverName: 'agentbuffs',
-    skill: { name: 'find-agent-tools', url: `${opts.origin}/api/discover/v1/setup/skill.md`, sha256: opts.skillSha ?? sha256(SKILL_TEXT) },
+    skill: { name: 'find-agent-tools', url: `${opts.origin}/api/discover/v1/setup/skill.md${opts.skillQuery ?? ''}`, sha256: opts.skillSha ?? sha256(SKILL_TEXT) },
     harnesses: [
       {
         slug: 'claude-code',
         name: 'Claude Code',
         detect: { commands: ['claude'], paths: ['~/.claude'] },
-        mcp: { kind: 'run', command: 'claude', args: ['mcp', 'add', '--transport', 'http', 'agentbuffs', MCP_URL] },
+        mcp: { kind: 'run', command: 'claude', args: ['mcp', 'add', '--transport', 'http', 'agentbuffs', url] },
         skill: { kind: 'file', path: '~/.claude/skills/find-agent-tools/SKILL.md' },
       },
       {
         slug: 'cursor',
         name: 'Cursor',
         detect: { commands: ['cursor'], paths: ['~/.cursor'] },
-        mcp: { kind: 'json-merge', path: '~/.cursor/mcp.json', keyPath: ['mcpServers', 'agentbuffs'], value: { url: MCP_URL } },
+        mcp: { kind: 'json-merge', path: '~/.cursor/mcp.json', keyPath: ['mcpServers', 'agentbuffs'], value: { url } },
         skill: null,
       },
       {
@@ -51,7 +52,7 @@ export function fixtureDocument(opts: { origin: string; skillSha?: string }): Re
           kind: 'json-merge',
           path: '${PROJECT}/.vscode/mcp.json',
           keyPath: ['servers', 'agentbuffs'],
-          value: { type: 'http', url: MCP_URL },
+          value: { type: 'http', url },
         },
         skill: null,
       },
@@ -59,7 +60,7 @@ export function fixtureDocument(opts: { origin: string; skillSha?: string }): Re
         slug: 'codex',
         name: 'Codex',
         detect: { commands: ['codex'], paths: ['~/.codex'] },
-        mcp: { kind: 'toml-merge', path: '~/.codex/config.toml', keyPath: ['mcp_servers', 'agentbuffs'], value: { url: MCP_URL } },
+        mcp: { kind: 'toml-merge', path: '~/.codex/config.toml', keyPath: ['mcp_servers', 'agentbuffs'], value: { url } },
         skill: { kind: 'file', path: '~/.codex/skills/find-agent-tools/SKILL.md' },
       },
       {
@@ -70,7 +71,7 @@ export function fixtureDocument(opts: { origin: string; skillSha?: string }): Re
           kind: 'yaml-merge',
           path: '~/.config/goose/config.yaml',
           keyPath: ['extensions', 'agentbuffs'],
-          value: { name: 'agentbuffs', enabled: true, type: 'streamable_http', uri: MCP_URL },
+          value: { name: 'agentbuffs', enabled: true, type: 'streamable_http', uri: url },
         },
         skill: null,
       },
@@ -78,7 +79,7 @@ export function fixtureDocument(opts: { origin: string; skillSha?: string }): Re
         slug: 'chatgpt',
         name: 'ChatGPT',
         detect: { commands: [], paths: [] },
-        mcp: { kind: 'manual', steps: ['Settings > Apps > Advanced settings > turn on Developer mode', 'Create app', `URL: ${MCP_URL}`], docsUrl: 'https://agentbuffs.com/clients/chatgpt' },
+        mcp: { kind: 'manual', steps: ['Settings > Apps > Advanced settings > turn on Developer mode', 'Create app', `URL: ${url}`], docsUrl: 'https://agentbuffs.com/clients/chatgpt' },
         skill: null,
       },
     ],
@@ -89,8 +90,10 @@ export type FixtureServer = { origin: string; requests: string[]; close: () => P
 
 /** Serves a document (built from the origin) and the skill text on 127.0.0.1. */
 export async function startFixtureServer(opts: {
-  document: (origin: string) => unknown;
-  skillText?: string;
+  /** The setup document for an origin and the query string of the request (`?reports=off` or ''). */
+  document: (origin: string, search: string) => unknown;
+  /** The skill file, or a function of the skill request's query string. */
+  skillText?: string | ((search: string) => string);
   delayMs?: number;
 }): Promise<FixtureServer> {
   const requests: string[] = [];
@@ -98,14 +101,16 @@ export async function startFixtureServer(opts: {
   const server: Server = createServer((request, response) => {
     requests.push(request.url ?? '');
     const send = (): void => {
-      if (request.url === '/api/discover/v1/setup') {
+      const { pathname, search } = new URL(request.url ?? '/', 'http://fixture.invalid');
+      if (pathname === '/api/discover/v1/setup') {
         response.writeHead(200, { 'content-type': 'application/json' });
-        response.end(JSON.stringify(opts.document(origin)));
+        response.end(JSON.stringify(opts.document(origin, search)));
         return;
       }
-      if (request.url === '/api/discover/v1/setup/skill.md') {
+      if (pathname === '/api/discover/v1/setup/skill.md') {
+        const text = typeof opts.skillText === 'function' ? opts.skillText(search) : (opts.skillText ?? SKILL_TEXT);
         response.writeHead(200, { 'content-type': 'text/markdown; charset=utf-8' });
-        response.end(opts.skillText ?? SKILL_TEXT);
+        response.end(text);
         return;
       }
       response.writeHead(404);

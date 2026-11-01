@@ -3,7 +3,8 @@
  * terminal's alternate screen) only where a person answers in a terminal that
  * can draw it. Everything else keeps the linear output: a pipe or CI gets
  * plain lines, a terminal with --yes, --no-fullscreen, no colour, TERM=dumb
- * or too few rows gets clack's look line by line. Pure.
+ * or too few rows gets clack's look line by line. So does an uninstall: the
+ * wizard's steps are the install's. Pure.
  */
 import { UsageError, readOptions } from './main.ts';
 import type { TerminalSize } from './virtual-terminal.ts';
@@ -30,7 +31,7 @@ function isOn(value: string | undefined): boolean {
 function flagsWantLinear(argv: readonly string[]): boolean {
   try {
     const options = readOptions(argv);
-    return options.yes || options.noFullscreen || options.help || options.version;
+    return options.yes || options.noFullscreen || options.help || options.version || options.command === 'uninstall';
   } catch (error) {
     // `main` reports the usage problem, on a linear screen.
     if (error instanceof UsageError) return true;

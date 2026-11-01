@@ -7,7 +7,7 @@
 import type { Paint } from './ansi.ts';
 import type { StepResult } from './apply.ts';
 import { displayPath, type RunContext } from './paths.ts';
-import type { Part, Step, StepPlan, What } from './plan.ts';
+import type { Command, Part, Step, StepPlan, What } from './plan.ts';
 import { commandLine } from './run-action.ts';
 import type { Harness } from './setup-document.ts';
 
@@ -19,6 +19,28 @@ export const PART_CHOICE: Readonly<Record<What, string>> = { both: 'MCP server a
 
 /** The example the closing words suggest. */
 export const EXAMPLE_ASK = 'Find me an MCP server for Postgres.';
+
+type Wording = {
+  /** The plan's phrase for what will happen to these parts. */
+  planned: (parts: string) => string;
+  /** The result's phrase for what happened to these parts. */
+  done: (parts: string) => string;
+  /** What a harness that needs nothing says. */
+  already: string;
+};
+
+const WORDING: Readonly<Record<Command, Wording>> = {
+  install: { planned: (parts) => parts, done: (parts) => parts, already: 'already set up' },
+  uninstall: { planned: (parts) => `remove ${parts}`, done: (parts) => `${parts} removed`, already: 'not set up' },
+};
+
+/** Step kinds that change something: write or delete a file, or run a program. */
+const CHANGING_KINDS: readonly StepPlan['kind'][] = ['write', 'run', 'run-remove', 'delete'];
+
+/** The reason a step leaves something alone (refused or kept), or null for any other step. */
+function reasonOf(plan: StepPlan): string | null {
+  return plan.kind === 'refused' || plan.kind === 'kept' ? plan.reason : null;
+}
 
 /** Groups items by harness, in first-seen order. */
 function byHarness<Item>(items: readonly Item[], harnessOf: (item: Item) => Harness): Array<[Harness, Item[]]> {
@@ -51,46 +73,55 @@ function sharedPhrase(opts: { parts: readonly Part[]; isAlone: boolean; phrase: 
   return opts.isAlone ? opts.phrase : `${partNames(opts.parts)} ${opts.phrase}`;
 }
 
-function planSummary(steps: readonly Step[]): string {
+function planSummary(steps: readonly Step[], wording: Wording): string {
   const partsWhere = (kinds: readonly StepPlan['kind'][]): Part[] => steps.filter((step) => kinds.includes(step.plan.kind)).map((step) => step.part);
-  const installs = partsWhere(['write', 'run']);
+  const installs = partsWhere(CHANGING_KINDS);
   const already = partsWhere(['already']);
   const manual = partsWhere(['manual']);
-  const refusals = steps.flatMap((step) => (step.plan.kind === 'refused' ? [`${PART_SHORT[step.part]}: ${step.plan.reason}`] : []));
+  const refusals = steps.flatMap((step) => {
+    const reason = reasonOf(step.plan);
+    return reason === null ? [] : [`${PART_SHORT[step.part]}: ${reason}`];
+  });
   const groupCount = [installs, already, manual].filter((parts) => parts.length > 0).length + refusals.length;
   const isAlone = groupCount === 1;
   const phrases = [
-    ...(installs.length > 0 ? [partNames(installs)] : []),
+    ...(installs.length > 0 ? [wording.planned(partNames(installs))] : []),
     ...refusals,
-    ...(already.length > 0 ? [sharedPhrase({ parts: already, isAlone, phrase: 'already set up' })] : []),
+    ...(already.length > 0 ? [sharedPhrase({ parts: already, isAlone, phrase: wording.already })] : []),
     ...(manual.length > 0 ? [sharedPhrase({ parts: manual, isAlone, phrase: isAlone ? 'manual steps, shown at the end' : 'by hand, steps at the end' })] : []),
   ];
   return joinPhrases(phrases);
 }
 
-/** One line per harness: `Claude Code    MCP server + skill`. */
-export function planLines(steps: readonly Step[]): string[] {
+/** One line per harness: `Claude Code    MCP server + skill`, or `remove MCP server + skill` for an uninstall. */
+export function planLines(steps: readonly Step[], command: Command): string[] {
   const groups = byHarness(steps, (step) => step.harness);
   const pad = nameColumn(groups.map(([harness]) => harness.name));
-  return groups.map(([harness, list]) => `${pad(harness.name)}${planSummary(list)}`);
+  return groups.map(([harness, list]) => `${pad(harness.name)}${planSummary(list, WORDING[command])}`);
 }
 
 const CHANGE_TEXT = {
   create: 'create',
   add: 'add to',
   replace: 'replace the agentbuffs entry in',
+  remove: 'remove the agentbuffs entry in',
 } as const;
 
-function detailOf(plan: StepPlan, ctx: RunContext): string[] {
+function detailOf(plan: StepPlan, ctx: RunContext, command: Command): string[] {
   switch (plan.kind) {
     case 'write': {
       const backup = plan.original === null ? '' : ', backup first';
       return [`${CHANGE_TEXT[plan.change]} ${displayPath(plan.file, ctx)}${backup}`, ...plan.preview];
     }
     case 'already':
-      return [`already in ${displayPath(plan.file, ctx)}`];
+      return [command === 'uninstall' ? `nothing to remove at ${displayPath(plan.file, ctx)}` : `already in ${displayPath(plan.file, ctx)}`];
     case 'run':
+    case 'run-remove':
       return [`run ${commandLine(plan.action)}`];
+    case 'delete':
+      return [`delete ${displayPath(plan.file, ctx)}${plan.folder === null ? '' : ' and its folder, if the folder is empty'}`, ...(plan.note === null ? [] : [plan.note])];
+    case 'kept':
+      return [`will not change: ${plan.reason}`];
     case 'manual':
       return ['manual steps:', ...plan.lines.map((line) => `  ${line}`)];
     case 'refused':
@@ -126,7 +157,7 @@ export function wrapText(opts: { text: string; width: number; indent: number }):
 }
 
 /** Every change, per harness and part: paths, entries and commands, wrapped to `width`. */
-export function detailLines(opts: { steps: readonly Step[]; ctx: RunContext; paint: Paint; width: number }): string[] {
+export function detailLines(opts: { steps: readonly Step[]; ctx: RunContext; paint: Paint; width: number; command: Command }): string[] {
   const label = (part: Part): string => PART_SHORT[part].padEnd(7);
   const indent = label('mcp').length + 2;
   const wrap = (text: string): string[] => wrapText({ text, width: opts.width, indent: indent + 2 });
@@ -134,7 +165,7 @@ export function detailLines(opts: { steps: readonly Step[]; ctx: RunContext; pai
     ...(index === 0 ? [] : ['']),
     opts.paint.bold(harness.name),
     ...list.flatMap((step) => {
-      const [first = '', ...rest] = detailOf(step.plan, opts.ctx);
+      const [first = '', ...rest] = detailOf(step.plan, opts.ctx, opts.command);
       return [...wrap(`  ${label(step.part)}${first}`), ...rest.flatMap((line) => wrap(`${' '.repeat(indent)}${line}`)).map(opts.paint.dim)];
     }),
   ]);
@@ -161,7 +192,7 @@ function paintMark(mark: Mark, paint: Paint): string {
   }
 }
 
-function resultSummary(results: readonly StepResult[]): string {
+function resultSummary(results: readonly StepResult[], wording: Wording): string {
   const partsWith = (status: StepResult['status']): Part[] => results.filter((result) => result.status === status).map((result) => result.step.part);
   const explained = (status: StepResult['status']): string[] =>
     results.filter((result) => result.status === status).map((result) => `${PART_SHORT[result.step.part]}: ${result.detail}`);
@@ -173,10 +204,10 @@ function resultSummary(results: readonly StepResult[]): string {
   const groupCount = failures.length + skips.length + [done, already, manual].filter((parts) => parts.length > 0).length;
   const isAlone = groupCount === 1;
   return joinPhrases([
-    ...(done.length > 0 ? [partNames(done)] : []),
+    ...(done.length > 0 ? [wording.done(partNames(done))] : []),
     ...failures,
     ...skips,
-    ...(already.length > 0 ? [sharedPhrase({ parts: already, isAlone, phrase: 'already set up' })] : []),
+    ...(already.length > 0 ? [sharedPhrase({ parts: already, isAlone, phrase: wording.already })] : []),
     ...(manual.length > 0 ? [sharedPhrase({ parts: manual, isAlone, phrase: isAlone ? 'manual steps below' : 'by hand, steps below' })] : []),
   ]);
 }
@@ -186,10 +217,10 @@ function resultSummary(results: readonly StepResult[]): string {
  * `names` sets the name column's width; pass every harness of the run, so the
  * lines do not move while results arrive one by one.
  */
-export function resultLines(opts: { results: readonly StepResult[]; paint: Paint; names?: readonly string[] }): string[] {
+export function resultLines(opts: { results: readonly StepResult[]; paint: Paint; command: Command; names?: readonly string[] }): string[] {
   const groups = byHarness(opts.results, (result) => result.step.harness);
   const pad = nameColumn(opts.names ?? groups.map(([harness]) => harness.name));
-  return groups.map(([harness, list]) => `${paintMark(markOf(list), opts.paint)} ${pad(harness.name)}${resultSummary(list)}`);
+  return groups.map(([harness, list]) => `${paintMark(markOf(list), opts.paint)} ${pad(harness.name)}${resultSummary(list, WORDING[opts.command])}`);
 }
 
 /** The manual steps of every harness that has some, under its name, wrapped to `width`. */
@@ -224,16 +255,37 @@ export type Closing = { lines: string[]; aside: string | null };
 
 const RATE_ASIDE = 'After your agent installs a tool, it can rate it on agentbuffs.com.';
 
-/** The last words: what to restart and what to ask the agent. */
-export function closing(results: readonly StepResult[]): Closing {
-  const namesWith = (status: StepResult['status']): string[] => [
-    ...new Set(results.filter((result) => result.status === status).map((result) => result.step.harness.name)),
-  ];
-  const restart = namesWith('done');
+function namesWith(results: readonly StepResult[], status: StepResult['status']): string[] {
+  return [...new Set(results.filter((result) => result.status === status).map((result) => result.step.harness.name))];
+}
+
+function installClosing(opts: { results: readonly StepResult[]; hasReports: boolean }): Closing {
+  const { results } = opts;
+  const restart = namesWith(results, 'done');
   const ask = `"${EXAMPLE_ASK}"`;
-  if (restart.length > 0) return { lines: [`Restart ${listNames(restart)}, then ask your agent:`, ask], aside: RATE_ASIDE };
-  if (namesWith('failed').length > 0) return { lines: ['Nothing new was installed. Fix the problem above and run agentbuffs again.'], aside: null };
-  if (namesWith('already').length > 0) return { lines: ['Everything was already set up. Ask your agent:', ask], aside: RATE_ASIDE };
-  if (namesWith('manual').length > 0) return { lines: ['Follow the steps above, then ask your agent:', ask], aside: RATE_ASIDE };
+  const aside = opts.hasReports ? RATE_ASIDE : null;
+  if (restart.length > 0) return { lines: [`Restart ${listNames(restart)}, then ask your agent:`, ask], aside };
+  if (namesWith(results, 'failed').length > 0) return { lines: ['Nothing new was installed. Fix the problem above and run agentbuffs again.'], aside: null };
+  if (namesWith(results, 'already').length > 0) return { lines: ['Everything was already set up. Ask your agent:', ask], aside };
+  if (namesWith(results, 'manual').length > 0) return { lines: ['Follow the steps above, then ask your agent:', ask], aside };
   return { lines: ['Nothing was installed.'], aside: null };
+}
+
+function uninstallClosing(results: readonly StepResult[]): Closing {
+  const restart = namesWith(results, 'done');
+  if (restart.length > 0) return { lines: [`Restart ${listNames(restart)} so it stops loading agentbuffs.`], aside: null };
+  if (namesWith(results, 'failed').length > 0) return { lines: ['Nothing was removed. Fix the problem above and run agentbuffs uninstall again.'], aside: null };
+  if (namesWith(results, 'skipped').length > 0) return { lines: ['Nothing was removed. The files named above stay as they are.'], aside: null };
+  if (namesWith(results, 'already').length > 0) return { lines: ['Nothing to remove. agentbuffs was not set up.'], aside: null };
+  if (namesWith(results, 'manual').length > 0) return { lines: ['Follow the steps above to finish.'], aside: null };
+  return { lines: ['Nothing was removed.'], aside: null };
+}
+
+/**
+ * The last words: what to restart and what to ask the agent. `hasReports` is
+ * false after `--no-reports`, which leaves out the line about rating tools.
+ */
+export function closing(opts: { results: readonly StepResult[]; command: Command; hasReports: boolean }): Closing {
+  if (opts.command === 'uninstall') return uninstallClosing(opts.results);
+  return installClosing(opts);
 }

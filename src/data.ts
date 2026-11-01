@@ -62,6 +62,32 @@ export function withValueAt(opts: { root: DataRecord; keyPath: readonly string[]
   return copy;
 }
 
+/**
+ * The shortest key path whose removal takes `keyPath` away and every parent
+ * that would be left empty by it. The top level object stays.
+ */
+export function pathToRemove(opts: { root: DataRecord; keyPath: readonly string[] }): string[] {
+  let cut = [...opts.keyPath];
+  for (let depth = opts.keyPath.length - 1; depth >= 1; depth -= 1) {
+    const parent = lookup(opts.root, opts.keyPath.slice(0, depth));
+    const isOnlyChild = parent.found && isDataRecord(parent.value) && Object.keys(parent.value).length === 1;
+    if (!isOnlyChild) break;
+    cut = opts.keyPath.slice(0, depth);
+  }
+  return cut;
+}
+
+/** A deep copy of `root` without the value at `keyPath`. The parents stay, even when they end up empty. */
+export function withoutValueAt(opts: { root: DataRecord; keyPath: readonly string[] }): DataRecord {
+  const copy: DataRecord = structuredClone(opts.root);
+  const parent = lookup(copy, opts.keyPath.slice(0, -1));
+  const last = opts.keyPath.at(-1);
+  if (last === undefined) throw new KeyPathConflictError('the key path is empty');
+  if (!parent.found || !isDataRecord(parent.value)) throw new KeyPathConflictError(`${opts.keyPath.slice(0, -1).join('.')} is not an object`);
+  delete parent.value[last];
+  return copy;
+}
+
 /** `{ a: { b: value } }` for `["a", "b"]`. */
 export function nestValue(keyPath: readonly string[], value: unknown): DataRecord {
   return withValueAt({ root: {}, keyPath, value });
@@ -76,6 +102,12 @@ export type MergeOutcome =
   | { change: 'add'; text: string }
   /** The file has a different entry under the same key. */
   | { change: 'replace'; text: string; existing: unknown };
+
+export type RemoveOutcome =
+  /** The entry is not in the file, or the file does not exist. */
+  | { change: 'none' }
+  /** The file holds the entry; `text` is the file without it. */
+  | { change: 'remove'; text: string };
 
 /** A file the CLI will not touch: unparseable, or the entry sits where it cannot edit safely. */
 export class MergeRefusedError extends Error {

@@ -6,6 +6,7 @@ import { parseSetupDocument, type SetupDocument, type SkillSource } from './setu
 
 export const DEFAULT_API = 'https://agentbuffs.com';
 export const SETUP_PATH = '/api/discover/v1/setup';
+const REPORTS_PARAM = 'reports';
 const SETUP_TIMEOUT_MS = 5_000;
 const SKILL_TIMEOUT_MS = 10_000;
 const MAX_SKILL_BYTES = 1_000_000;
@@ -44,9 +45,14 @@ export function setupUrl(api: string): URL {
   return new URL(SETUP_PATH, base);
 }
 
-/** Fetches and validates the setup document, with a 5 second limit. */
-export async function fetchSetupDocument(opts: { api: string; version: string }): Promise<SetupDocument> {
+/**
+ * Fetches and validates the setup document, with a 5 second limit.
+ * `reportsOff` asks the server for the variant without the rating tools
+ * (`?reports=off`); the CLI uses whatever the server answers with.
+ */
+export async function fetchSetupDocument(opts: { api: string; version: string; reportsOff: boolean }): Promise<SetupDocument> {
   const url = setupUrl(opts.api);
+  if (opts.reportsOff) url.searchParams.set(REPORTS_PARAM, 'off');
   const response = await getResponse({ url, timeoutMs: SETUP_TIMEOUT_MS, version: opts.version, accept: 'application/json' });
   const body: unknown = await response.json().catch(() => {
     throw new NetworkError(`${url.href} did not answer with JSON`);

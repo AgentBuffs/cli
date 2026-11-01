@@ -15,9 +15,12 @@ import {
   isDataRecord,
   lookup,
   nestValue,
+  pathToRemove,
   withValueAt,
+  withoutValueAt,
   type DataRecord,
   type MergeOutcome,
+  type RemoveOutcome,
 } from './data.ts';
 import type { JsonValue } from './setup-document.ts';
 
@@ -91,4 +94,33 @@ export function mergeJson(opts: { text: string | null; keyPath: readonly string[
   const text = hasBom ? `${BOM}${withNewline}` : withNewline;
   if (existing.found) return { change: 'replace', text, existing: existing.value };
   return { change: 'add', text };
+}
+
+/**
+ * Plans the reverse of `mergeJson`: deletes the value at `keyPath` and leaves
+ * the rest of the file byte for byte. A parent object that the removal would
+ * leave empty goes too, as `mergeJson` creates it. `text` is the current file, or null when it does not exist.
+ * Throws `MergeRefusedError` for a file it must not touch.
+ */
+export function removeJson(opts: { text: string | null; keyPath: readonly string[]; isJsonc: boolean }): RemoveOutcome {
+  if (opts.text === null) return { change: 'none' };
+  const hasBom = opts.text.startsWith(BOM);
+  const body = hasBom ? opts.text.slice(1) : opts.text;
+  if (body.trim() === '') return { change: 'none' };
+
+  const root = parseRoot(body, opts.isJsonc);
+  if (!findExisting(root, opts.keyPath).found) return { change: 'none' };
+
+  const eol = body.includes('\r\n') ? '\r\n' : '\n';
+  const cut = pathToRemove({ root, keyPath: opts.keyPath });
+  const edits = modify(body, cut, undefined, { formattingOptions: { insertSpaces: true, tabSize: INDENT, eol } });
+  const applied = applyEdits(body, edits);
+  // A file that held only the entry ends as `{}`, not as the `{` and `}` on two lines the editor leaves.
+  const edited = /^\{\s*\}\s*$/.test(applied) ? `{}${applied.endsWith('\n') ? eol : ''}` : applied;
+
+  const expected = withoutValueAt({ root, keyPath: cut });
+  if (!deepEqual(parseRoot(edited, opts.isJsonc), expected)) {
+    throw new MergeRefusedError('the edit could not be checked, so the file was left alone');
+  }
+  return { change: 'remove', text: hasBom ? `${BOM}${edited}` : edited };
 }

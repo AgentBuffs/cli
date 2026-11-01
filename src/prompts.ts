@@ -4,7 +4,7 @@
  */
 import { confirm, isCancel, multiselect, select } from '@clack/prompts';
 import type { Readable, Writable } from 'node:stream';
-import type { What } from './plan.ts';
+import type { Command, What } from './plan.ts';
 import { PART_CHOICE } from './render.ts';
 
 export class CancelledError extends Error {
@@ -21,14 +21,18 @@ export type PlanAction = 'install' | 'details' | 'cancel';
 export type DetailsOffer = { kind: 'first' } | { kind: 'next'; page: number; pages: number } | null;
 
 export interface Prompter {
-  chooseHarnesses(opts: { choices: readonly HarnessChoice[]; preselected: readonly string[] }): Promise<string[]>;
+  chooseHarnesses(opts: { choices: readonly HarnessChoice[]; preselected: readonly string[]; command: Command }): Promise<string[]>;
   chooseWhat(): Promise<What>;
-  choosePlanAction(opts: { details: DetailsOffer }): Promise<PlanAction>;
+  /** `install` is the answer that goes ahead, for an uninstall too; only the label differs. */
+  choosePlanAction(opts: { details: DetailsOffer; command: Command }): Promise<PlanAction>;
   confirm(message: string): Promise<boolean>;
 }
 
 /** Rows of the harness list on screen at once; the rest page inside the list. clack shows fewer when the terminal is short. */
 const LIST_ROWS = 8;
+
+const HARNESS_QUESTION: Readonly<Record<Command, string>> = { install: 'Install into which agents?', uninstall: 'Remove from which agents?' };
+const GO_LABEL: Readonly<Record<Command, string>> = { install: 'Install', uninstall: 'Remove' };
 
 function detailsLabel(offer: Exclude<DetailsOffer, null>): string {
   if (offer.kind === 'first') return 'Show the changes first';
@@ -48,9 +52,9 @@ function answered<Value>(value: Value | symbol): Value {
 export function clackPrompter(opts: { input: Readable; output: Writable }): Prompter {
   const { input, output } = opts;
   return {
-    async chooseHarnesses({ choices, preselected }) {
+    async chooseHarnesses({ choices, preselected, command }) {
       const picked = await multiselect<string>({
-        message: 'Install into which agents?',
+        message: HARNESS_QUESTION[command],
         options: choices.map((choice) => (choice.hint === null ? { value: choice.slug, label: choice.label } : { value: choice.slug, label: choice.label, hint: choice.hint })),
         initialValues: [...preselected],
         maxItems: LIST_ROWS,
@@ -74,9 +78,9 @@ export function clackPrompter(opts: { input: Readable; output: Writable }): Prom
       });
       return answered<What>(picked);
     },
-    async choosePlanAction({ details }) {
+    async choosePlanAction({ details, command }) {
       const options: { value: PlanAction; label: string }[] = [
-        { value: 'install', label: 'Install' },
+        { value: 'install', label: GO_LABEL[command] },
         ...(details === null ? [] : [{ value: 'details' as const, label: detailsLabel(details) }]),
         { value: 'cancel', label: 'Cancel' },
       ];

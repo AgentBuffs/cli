@@ -12,9 +12,12 @@ import {
   deepEqual,
   isDataRecord,
   lookup,
+  pathToRemove,
   withValueAt,
+  withoutValueAt,
   type DataRecord,
   type MergeOutcome,
+  type RemoveOutcome,
 } from './data.ts';
 import type { JsonObject, JsonValue } from './setup-document.ts';
 
@@ -269,4 +272,56 @@ export function mergeToml(opts: { text: string | null; keyPath: readonly string[
   const text = hasBom ? `${BOM}${edited}` : edited;
   if (existing.found) return { change: 'replace', text, existing: existing.value };
   return { change: 'add', text };
+}
+
+const BLANK_LINES = /^(?:[ \t]*\r?\n)*/;
+
+/**
+ * The text without the span and the blank lines after it. `mergeToml` puts a
+ * blank line in front of a table it appends; when the span was the end of the
+ * file, that line goes too, so install then uninstall gives the original back.
+ */
+function withoutSpan(opts: { text: string; span: Span; eol: string }): string {
+  const { text, span } = opts;
+  const before = text.slice(0, span.start);
+  const rest = text.slice(span.end);
+  const after = rest.slice(BLANK_LINES.exec(rest)?.[0].length ?? 0);
+  const gap = `${opts.eol}${opts.eol}`;
+  if (after === '' && before.endsWith(gap)) return before.slice(0, -opts.eol.length);
+  return `${before}${after}`;
+}
+
+/**
+ * Plans the reverse of `mergeToml`: cuts the `keyPath` table and its
+ * sub-tables out of the text and leaves every other byte. `text` is the
+ * current file, or null when it does not exist. Throws `MergeRefusedError` for
+ * a file it must not touch.
+ */
+export function removeToml(opts: { text: string | null; keyPath: readonly string[] }): RemoveOutcome {
+  if (opts.text === null) return { change: 'none' };
+  const hasBom = opts.text.startsWith(BOM);
+  const body = hasBom ? opts.text.slice(1) : opts.text;
+  const eol = body.includes('\r\n') ? '\r\n' : '\n';
+
+  const root = parseRoot(body);
+  if (!findExisting(root, opts.keyPath).found) return { change: 'none' };
+
+  const spans = tableSpans(body, opts.keyPath);
+  if (spans.length === 0) throw new MergeRefusedError('the entry is written inline or with dotted keys, so it must be removed by hand');
+  let edited = body;
+  for (const span of spans.toReversed()) edited = withoutSpan({ text: edited, span, eol });
+
+  const check = (() => {
+    try {
+      return parseRoot(edited);
+    } catch {
+      return null;
+    }
+  })();
+  // A header-less parent (`[mcp_servers]` was never written) is gone from the text; an explicit one stays as an empty table.
+  const expected = [pathToRemove({ root, keyPath: opts.keyPath }), opts.keyPath].map((keyPath) => withoutValueAt({ root, keyPath }));
+  if (check === null || !expected.some((candidate) => deepEqual(check, candidate))) {
+    throw new MergeRefusedError(`the ${opts.keyPath.join('.')} entry cannot be removed here without changing other settings`);
+  }
+  return { change: 'remove', text: hasBom ? `${BOM}${edited}` : edited };
 }

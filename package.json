@@ -22,6 +22,7 @@
     "installer"
   ],
   "type": "module",
+  "packageManager": "pnpm@11.5.1",
   "bin": {
     "agentbuffs": "dist/cli.mjs"
   },
@@ -38,6 +39,7 @@
     "typecheck": "tsc --noEmit",
     "test": "node --import tsx --test --test-concurrency=1 \"tests/**/*.test.ts\"",
     "check": "pnpm typecheck && pnpm build && pnpm test",
+    "release": "node scripts/release.mjs",
     "prepublishOnly": "pnpm check"
   },
   "devDependencies": {

@@ -13,6 +13,9 @@ import type { Action, FileAction, Harness, JsonMergeAction, RunAction, SetupDocu
 import { mergeToml, renderTomlTable } from './toml-merge.ts';
 import { yamlSnippet } from './yaml-snippet.ts';
 
+/** What a run does: add the setup to the agents, or take it away again. */
+export type Command = 'install' | 'uninstall';
+
 export type Part = 'mcp' | 'skill';
 export type What = 'mcp' | 'skill' | 'both';
 
@@ -21,12 +24,18 @@ export const PARTS_FOR: Readonly<Record<What, readonly Part[]>> = { mcp: ['mcp']
 /** Harnesses whose config files are JSONC (comments and trailing commas allowed). */
 const JSONC_HARNESSES: ReadonlySet<string> = new Set(['vscode', 'zed', 'kilo-code']);
 
-export type WriteChange = 'create' | 'add' | 'replace';
+export type WriteChange = 'create' | 'add' | 'replace' | 'remove';
 
 export type StepPlan =
   | { kind: 'write'; file: string; original: string | null; text: string; change: WriteChange; preview: string[] }
   | { kind: 'already'; file: string }
   | { kind: 'run'; action: RunAction; commandPath: string }
+  /** Uninstall: the harness CLI's remove command. `action` holds that command, not the add. */
+  | { kind: 'run-remove'; action: RunAction; commandPath: string }
+  /** Uninstall: a skill file that is ours, to delete; `folder` goes too when it is empty. */
+  | { kind: 'delete'; file: string; folder: string | null; note: string | null }
+  /** Uninstall: something that is there and is left alone, and why. */
+  | { kind: 'kept'; reason: string }
   | { kind: 'manual'; lines: string[] }
   | { kind: 'refused'; reason: string }
   | { kind: 'not-offered' };
@@ -43,7 +52,7 @@ function fromMerge(opts: { outcome: MergeOutcome; file: string; original: string
   return { kind: 'write', file: opts.file, original: opts.original, text: opts.outcome.text, change: opts.outcome.change, preview: opts.preview };
 }
 
-function isJsonc(opts: { action: JsonMergeAction; harness: Harness; file: string }): boolean {
+export function isJsonc(opts: { action: JsonMergeAction; harness: Harness; file: string }): boolean {
   if (opts.action.jsonc !== null) return opts.action.jsonc;
   return opts.file.endsWith('.jsonc') || JSONC_HARNESSES.has(opts.harness.slug);
 }
@@ -154,7 +163,9 @@ export function buildPlan(opts: { harnesses: readonly Harness[]; what: What; inp
   return opts.harnesses.flatMap((harness) => parts.map((part) => planStep({ harness, part, input: opts.input })));
 }
 
-/** True when a step would write a file or run a program. */
+const ACTIONABLE_KINDS: readonly StepPlan['kind'][] = ['write', 'run', 'run-remove', 'delete'];
+
+/** True when a step would write or delete a file, or run a program. */
 export function isActionable(step: Step): boolean {
-  return step.plan.kind === 'write' || step.plan.kind === 'run';
+  return ACTIONABLE_KINDS.includes(step.plan.kind);
 }

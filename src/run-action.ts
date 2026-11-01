@@ -37,6 +37,49 @@ export const INSTALLED_CHECKS: Readonly<Record<string, (serverName: string) => s
   codex: (serverName) => ['mcp', 'get', serverName],
 };
 
+const SCOPES: readonly string[] = ['local', 'user', 'project'];
+
+/** The scope an add command names (`--scope user`, `-s user`), or null when it names none. Throws for a scope this CLI does not know. */
+function scopeOf(args: readonly string[]): string | null {
+  const index = args.findIndex((arg) => arg === '--scope' || arg === '-s' || arg.startsWith('--scope='));
+  if (index === -1) return null;
+  const arg = args[index] ?? '';
+  const value = arg.startsWith('--scope=') ? arg.slice('--scope='.length) : args[index + 1];
+  if (value === undefined || !SCOPES.includes(value)) throw new RunRefusedError(`the scope ${JSON.stringify(value)} is not one this CLI knows`);
+  return value;
+}
+
+type RemoveContext = { serverName: string; scope: string | null };
+
+/**
+ * The remove command of each harness CLI that has one, written here and never
+ * taken from the server. The server's add command only picks the scope, from
+ * the three values in `SCOPES`. A CLI that is not in this table gets manual
+ * steps instead.
+ */
+const REMOVE_COMMANDS: Readonly<Record<string, (context: RemoveContext) => string[]>> = {
+  claude: ({ serverName, scope }) => ['mcp', 'remove', serverName, ...(scope === null ? [] : ['--scope', scope])],
+  codex: ({ serverName }) => ['mcp', 'remove', serverName],
+  gemini: ({ serverName, scope }) => ['mcp', 'remove', ...(scope === null ? [] : ['--scope', scope]), serverName],
+  pi: ({ serverName }) => ['mcp', 'remove', serverName],
+};
+
+/**
+ * The arguments that undo `add`, or null when this CLI has no known remove
+ * command. Throws `RunRefusedError` when the add command names a scope this CLI
+ * does not know.
+ */
+export function removeArgsFor(add: RunAction, serverName: string): string[] | null {
+  const build = REMOVE_COMMANDS[add.command];
+  if (build === undefined) return null;
+  return build({ serverName, scope: scopeOf(add.args) });
+}
+
+/** True when `url` is one of the words of `output`, so `/mcp` does not count for `/mcp?reports=off`. */
+export function mentionsUrl(output: string, url: string): boolean {
+  return output.split(/[\s"',]+/).includes(url);
+}
+
 export type ExecResult = { exitCode: number; stdout: string; stderr: string };
 
 /** Runs a program without a shell. Injected so tests can watch the calls. */

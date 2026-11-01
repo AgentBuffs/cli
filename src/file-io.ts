@@ -1,10 +1,10 @@
 /**
- * The only module that writes files. Every write is atomic (a temp file in the
+ * The only module that writes or deletes files. Every write is atomic (a temp file in the
  * same folder, then a rename), and a file that existed is copied to a backup
  * first.
  */
 import { randomBytes } from 'node:crypto';
-import { constants, copyFileSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { constants, copyFileSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, rmdirSync, statSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
 /** The file's text, or null when it does not exist. */
@@ -37,6 +37,23 @@ export function writeAtomic(opts: { file: string; text: string }): void {
     renameSync(temp, opts.file);
   } catch (error) {
     rmSync(temp, { force: true });
+    throw error;
+  }
+}
+
+/** Deletes one file. */
+export function removeFile(file: string): void {
+  rmSync(file);
+}
+
+/** Removes `dir` only when it is empty; true when it went. A folder with anything in it stays. */
+export function removeDirIfEmpty(dir: string): boolean {
+  try {
+    rmdirSync(dir);
+    return true;
+  } catch (error) {
+    const code = error instanceof Error && 'code' in error ? error.code : null;
+    if (code === 'ENOTEMPTY' || code === 'EEXIST') return false;
     throw error;
   }
 }

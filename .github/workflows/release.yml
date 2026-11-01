@@ -1,0 +1,75 @@
+# Publishes the package when a version tag is pushed: `pnpm release x.y.z`, then
+# `git push origin main --follow-tags`. See RELEASING.md.
+#
+# npm trusted publishing (OIDC): there is no NPM_TOKEN. npm accepts the publish
+# because the package lists this workflow as a trusted publisher.
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write # create the GitHub Release
+  id-token: write # npm trusted publishing and provenance
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+
+      # pnpm, in the version package.json names in "packageManager".
+      - uses: pnpm/setup@v3
+        with:
+          install: false
+
+      - name: Tag matches package.json
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          if [ "$GITHUB_REF_NAME" != "v$version" ]; then
+            echo "::error::The tag $GITHUB_REF_NAME does not match package.json version $version"
+            exit 1
+          fi
+
+      # Trusted publishing needs npm 11.5.1 or newer.
+      - name: Use npm 11.5.1 or newer
+        run: |
+          current="$(npm --version)"
+          oldest="$(printf '%s\n' 11.5.1 "$current" | sort -V | head -n 1)"
+          if [ "$oldest" != "11.5.1" ]; then
+            npm install --global npm@11
+          fi
+          npm --version
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm check
+
+      # A re-run after a failed GitHub Release step must not fail on a version npm already has.
+      - name: Publish to npm
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          if npm view "agentbuffs@$version" version > /dev/null 2>&1; then
+            echo "agentbuffs@$version is already on npm, skipping the publish"
+            exit 0
+          fi
+          npm publish --provenance --access public
+
+      - name: Create the GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          node scripts/release.mjs notes "$version" > "$RUNNER_TEMP/notes.md"
+          if gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1; then
+            gh release edit "$GITHUB_REF_NAME" --title "agentbuffs $version" --notes-file "$RUNNER_TEMP/notes.md"
+            exit 0
+          fi
+          gh release create "$GITHUB_REF_NAME" --verify-tag --title "agentbuffs $version" --notes-file "$RUNNER_TEMP/notes.md"
